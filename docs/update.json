@@ -1,8 +1,8 @@
 {
-  "version": "0.3.1",
-  "url": "https://github.com/mrcsmcl/billiejeanpad/releases/download/v0.3.1/BillieJeanPad-Update.exe",
-  "sha256": "c249d6ff2129ad65964592d3176f9efeed42e52c29b4e1515e82df0865764092",
-  "size": 10604032,
-  "publishedAt": "2026-10-30T20:48:46Z",
-  "signature": "2ab33be2f43ce243c676d966e0f916b067e418596a8f8cb81fbb780895f74a9217b78a437d32f0eef73daf7aaa072de98223f369ff15c00e63b45d34f21c6309"
+  "version": "0.3.2",
+  "url": "https://github.com/mrcsmcl/billiejeanpad/releases/download/v0.3.2/BillieJeanPad-Update.exe",
+  "sha256": "af320c5768efbe1fd4babeae3dd1cd9f63e176eee29f60a18caa0ce99adcd580",
+  "size": 10604544,
+  "publishedAt": "2026-10-30T20:51:16Z",
+  "signature": "d93db43400a952b567bb6482789cbf9c6b6d5926dea0194d32da3104611cd49de8938cc61417e9fa2be6afebd506da1f936c5ffd4d46fdea9f5f5a39f9439901"
 }
