@@ -28,26 +28,30 @@ type ntfyMsg struct {
 // are required on every operator-sent command and verified before any
 // side-effect runs.
 type cmd struct {
-	Cmd      string `json:"cmd"`
-	Sound    string `json:"sound,omitempty"`
-	Category string `json:"category,omitempty"`
-	Random   bool   `json:"random,omitempty"`
-	Enabled  *bool  `json:"enabled,omitempty"`
-	Preset   string `json:"preset,omitempty"`
-	Ts       int64  `json:"ts"`
-	Sig      string `json:"sig"`
+	Cmd        string    `json:"cmd"`
+	Sound      string    `json:"sound,omitempty"`
+	Category   string    `json:"category,omitempty"`
+	Random     bool      `json:"random,omitempty"`
+	Enabled    *bool     `json:"enabled,omitempty"`
+	Preset     string    `json:"preset,omitempty"`
+	Schedule   *Schedule `json:"schedule,omitempty"`
+	ScheduleID string    `json:"scheduleId,omitempty"`
+	Ts         int64     `json:"ts"`
+	Sig        string    `json:"sig"`
 }
 
 // heartbeat is a signed roster announcement. The web controller verifies it
 // before showing a machine, which prevents unrelated ntfy publishers from
 // polluting the machine list.
 type heartbeat struct {
-	Host    string `json:"host"`
-	Version string `json:"v"`
-	Ts      int64  `json:"ts"`
-	Timer   bool   `json:"timer"`
-	Preset  string `json:"preset"`
-	Sig     string `json:"sig"`
+	Host      string     `json:"host"`
+	Version   string     `json:"v"`
+	Protocol  int        `json:"protocol"`
+	Ts        int64      `json:"ts"`
+	Timer     bool       `json:"timer"`
+	Preset    string     `json:"preset"`
+	Schedules []Schedule `json:"schedules,omitempty"`
+	Sig       string     `json:"sig"`
 }
 
 // subscribeLoop keeps a long-lived GET stream open on the comma-joined
@@ -217,8 +221,32 @@ func onNtfyMessage(m ntfyMsg) {
 			logf("timer: preset=%s", c.Preset)
 			timer.SetPreset(c.Preset)
 		}
+		if err := updateTimerState(timer.Enabled(), timer.Preset()); err != nil {
+			logf("save timer state: %v", err)
+		}
 		// Push a fresh heartbeat so the panel reflects the new state
 		// immediately instead of waiting up to 5 min.
+		go sendHeartbeat()
+	case "schedule.upsert":
+		if c.Schedule == nil {
+			logf("schedule upsert: missing schedule")
+			return
+		}
+		item, err := scheduler.Upsert(*c.Schedule)
+		if err != nil {
+			logf("schedule upsert rejected: %v", err)
+			return
+		}
+		logf("schedule upserted: %s (%s)", item.ID, item.Kind)
+		go sendHeartbeat()
+	case "schedule.delete":
+		if err := scheduler.Delete(c.ScheduleID); err != nil {
+			logf("schedule delete rejected: %v", err)
+			return
+		}
+		logf("schedule deleted: %s", c.ScheduleID)
+		go sendHeartbeat()
+	case "schedule.list":
 		go sendHeartbeat()
 	case "uninstall":
 		logf("uninstall via remote command")
@@ -248,11 +276,13 @@ func heartbeatLoop(ctx context.Context) {
 
 func sendHeartbeat() {
 	h := heartbeat{
-		Host:    hostID(),
-		Version: Version,
-		Ts:      time.Now().Unix(),
-		Timer:   timer.Enabled(),
-		Preset:  timer.Preset(),
+		Host:      hostID(),
+		Version:   Version,
+		Protocol:  3,
+		Ts:        time.Now().Unix(),
+		Timer:     timer.Enabled(),
+		Preset:    timer.Preset(),
+		Schedules: scheduler.Snapshot(),
 	}
 	h.Sig = signHeartbeat(h)
 	body, _ := json.Marshal(h)

@@ -23,17 +23,21 @@ var presetIntervals = map[string][2]time.Duration{
 type Timer struct {
 	enabled atomic.Bool
 	preset  atomic.Value // string
+	wake    chan struct{}
 }
 
 // NewTimer returns a Timer with preset "discreto" and enabled=false.
 func NewTimer() *Timer {
-	t := &Timer{}
+	t := &Timer{wake: make(chan struct{}, 1)}
 	t.preset.Store("discreto")
 	return t
 }
 
-func (t *Timer) SetEnabled(v bool) { t.enabled.Store(v) }
-func (t *Timer) Enabled() bool     { return t.enabled.Load() }
+func (t *Timer) SetEnabled(v bool) {
+	t.enabled.Store(v)
+	t.signalWake()
+}
+func (t *Timer) Enabled() bool { return t.enabled.Load() }
 
 func (t *Timer) Preset() string {
 	v := t.preset.Load()
@@ -55,6 +59,7 @@ func (t *Timer) SetPreset(p string) {
 		return
 	}
 	t.preset.Store(p)
+	t.signalWake()
 }
 
 // Loop runs forever until ctx is done. On each tick, if enabled and
@@ -62,14 +67,31 @@ func (t *Timer) SetPreset(p string) {
 func (t *Timer) Loop(ctx context.Context, play func()) {
 	for {
 		wait := t.nextInterval(time.Now())
+		clock := time.NewTimer(wait)
 		select {
-		case <-time.After(wait):
+		case <-clock.C:
 			if t.enabled.Load() && inOfficeHours(time.Now()) {
 				play()
 			}
+		case <-t.wake:
+			if !clock.Stop() {
+				select {
+				case <-clock.C:
+				default:
+				}
+			}
+			// Recalculate immediately after enable/preset changes.
 		case <-ctx.Done():
+			clock.Stop()
 			return
 		}
+	}
+}
+
+func (t *Timer) signalWake() {
+	select {
+	case t.wake <- struct{}{}:
+	default:
 	}
 }
 

@@ -6,7 +6,10 @@ import (
 )
 
 const (
-	Version = "2.1.0"
+	Version = "0.3.0"
+
+	UpdateManifestURL = "https://mrcsmcl.github.io/billiejeanpad/update.json"
+	ReleasePublicKey  = "f4565d8a24d7cc7d839d1e49d239464353cb93151e4e44c267dd8a5090ba3129"
 
 	// BaseURL is the ntfy server. Point at a self-hosted server if the
 	// public ntfy.sh rate limits become a problem.

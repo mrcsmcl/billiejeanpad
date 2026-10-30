@@ -23,7 +23,7 @@
     <header class="topbar">
       <div class="identity">
         <h1>Billie Jean Pad</h1>
-        <p>Controle de palco</p>
+        <p>Controle de palco · v<span id="controllerVersion">0.3.0</span></p>
       </div>
       <div class="live-state" id="liveState" data-online="false">
         <span class="live-light" aria-hidden="true"></span>
@@ -39,6 +39,7 @@
     <nav class="view-tabs" role="tablist" aria-label="Áreas do painel">
       <button class="view-tab" id="padTab" type="button" role="tab" aria-selected="true" aria-controls="padPanel">Pad</button>
       <button class="view-tab" id="machinesTab" type="button" role="tab" aria-selected="false" aria-controls="machinesPanel">Máquinas</button>
+      <button class="view-tab" id="agendaTab" type="button" role="tab" aria-selected="false" aria-controls="agendaPanel">Agenda</button>
     </nav>
 
     <main>
@@ -121,6 +122,81 @@
         <div class="machine-list" id="machineList">
           <div class="empty-state">Nenhuma máquina encontrada.</div>
         </div>
+      </section>
+
+      <section id="agendaPanel" role="tabpanel" aria-labelledby="agendaTab" hidden>
+        <div class="machines-head">
+          <div>
+            <h2>Agenda</h2>
+            <p>As regras ficam salvas e são executadas na máquina escolhida.</p>
+          </div>
+        </div>
+
+        <form class="schedule-form" id="scheduleForm">
+          <div class="form-field">
+            <label for="scheduleTarget">Máquina</label>
+            <select id="scheduleTarget" name="scheduleTarget" autocomplete="off" required>
+              <option value="">Escolha uma máquina…</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="scheduleAction">Som</label>
+            <select id="scheduleAction" name="scheduleAction" autocomplete="off" required></select>
+          </div>
+          <div class="form-field">
+            <label for="scheduleKind">Quando</label>
+            <select id="scheduleKind" name="scheduleKind" autocomplete="off">
+              <option value="once">Uma vez</option>
+              <option value="weekly">Toda semana</option>
+              <option value="window">Uma vez numa janela aleatória</option>
+            </select>
+          </div>
+
+          <div class="schedule-fields" data-kind-fields="once">
+            <div class="form-field">
+              <label for="scheduleAt">Data e hora</label>
+              <input id="scheduleAt" name="scheduleAt" type="datetime-local">
+            </div>
+          </div>
+
+          <div class="schedule-fields" data-kind-fields="weekly" hidden>
+            <fieldset class="weekday-fieldset">
+              <legend>Dias da semana</legend>
+              <div class="weekday-grid" data-weekday-group="weekly"></div>
+            </fieldset>
+            <div class="form-field">
+              <label for="scheduleClock">Horário</label>
+              <input id="scheduleClock" name="scheduleClock" type="time" value="15:00">
+            </div>
+          </div>
+
+          <div class="schedule-fields" data-kind-fields="window" hidden>
+            <fieldset class="weekday-fieldset">
+              <legend>Dias da semana</legend>
+              <div class="weekday-grid" data-weekday-group="window"></div>
+            </fieldset>
+            <div class="time-pair">
+              <div class="form-field">
+                <label for="windowStart">Entre</label>
+                <input id="windowStart" name="windowStart" type="time" value="13:00">
+              </div>
+              <div class="form-field">
+                <label for="windowEnd">E</label>
+                <input id="windowEnd" name="windowEnd" type="time" value="17:00">
+              </div>
+            </div>
+          </div>
+
+          <p class="timezone-note" id="timezoneNote"></p>
+          <button class="primary-button schedule-submit" type="submit">Criar agendamento</button>
+        </form>
+
+        <section class="schedule-list-section" aria-labelledby="scheduleListTitle">
+          <h2 class="section-heading" id="scheduleListTitle">Próximas execuções</h2>
+          <div class="schedule-list" id="scheduleList">
+            <div class="empty-state">Nenhum agendamento recebido.</div>
+          </div>
+        </section>
       </section>
     </main>
   </div>

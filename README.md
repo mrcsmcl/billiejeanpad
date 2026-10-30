@@ -1,103 +1,134 @@
-# Billie Jean Pad
+# Billie Jean Pad 0.3.0
 
-Soundboard colaborativo para Windows, controlado por uma PWA no celular. Cada grupo tem uma única chave privada. O cliente deriva dessa chave os canais ntfy e usa a própria chave para assinar comandos e anúncios de presença.
+Soundboard colaborativo para Windows controlado por uma PWA no celular. A versão 0.3.0 adiciona agenda persistente, configuração local protegida e atualização automática silenciosa com assinatura Ed25519 e rollback.
 
-## Gerar as duas builds
+## Builds
 
-Primeiro copie os 22 WAVs selecionados do pack local:
+Copie os 22 WAVs selecionados do pack local:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\curate.ps1
 ```
 
-Depois gere os executáveis:
+Gere os executáveis:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-Na primeira execução, o script cria `group.local.json` com uma chave aleatória de 256 bits. Nas execuções seguintes, reutiliza a mesma chave. O arquivo está no `.gitignore` e não deve ser publicado.
+O script cria `group.local.json` na primeira execução e reutiliza a mesma chave nas seguintes. Esse arquivo não entra no Git.
 
-O resultado fica em `dist/`:
+A pasta `dist/` recebe:
 
 ```text
 BillieJeanPad-Share.exe
 BillieJeanPad-Keep.exe
+BillieJeanPad-Update.exe
 ```
 
-A build **Share** instala o aplicativo e, quando a instalação termina com sucesso, apaga somente o executável distribuidor que foi aberto. A cópia instalada em `%LOCALAPPDATA%\BillieJeanPad\billiejeanpad.exe` continua funcionando. Use essa variante para distribuição.
+`Share` instala o aplicativo e apaga somente o lançador distribuído. `Keep` instala e preserva o lançador. `Update` é o payload genérico usado pelo atualizador; ele não contém chave de grupo e só funciona numa instalação que já tenha `state.dat`.
 
-A build **Keep** faz a mesma instalação, mas preserva o executável distribuidor. Use para arquivo, diagnóstico e testes.
+## Instalação
 
-Para imprimir também um convite pronto para o painel:
+Ao abrir Share ou Keep, o aplicativo copia-se para `%LOCALAPPDATA%\BillieJeanPad\billiejeanpad.exe`, registra inicialização automática e inicia em segundo plano sem abrir janela. Ele tenta uma Scheduled Task e usa `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` quando a política do Windows bloquear tarefas.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 `
-  -SiteUrl "https://SEU-USUARIO.github.io/NOME-DO-REPO/"
-```
+A versão 0.3.0 migra a chave incorporada no bootstrap para `%LOCALAPPDATA%\BillieJeanPad\state.dat`. O arquivo inteiro é criptografado pelo DPAPI no escopo do usuário do Windows. Ele guarda a chave, o modo automático e os agendamentos.
 
-O convite contém a chave depois de `#`. Essa parte não é enviada ao GitHub Pages, mas qualquer pessoa que receba o link passa a controlar o grupo.
+`Ctrl + Shift + F12` interrompe o som e encerra o processo. A remoção permanente fica somente na aba Máquinas da PWA, com confirmação.
 
-## Hospedar a PWA no GitHub Pages
+## PWA
 
-A pasta `docs/` está pronta para publicação. Em **Settings → Pages**, selecione **Deploy from a branch**, a branch `main` e a pasta `/docs`.
-
-O site publicado não contém a chave de nenhum grupo. No primeiro acesso, ele solicita somente a chave. O navegador salva a configuração localmente. Depois disso, abrir a PWA pelo ícone do celular reconecta automaticamente sem pedir a chave novamente.
-
-Para instalar no celular:
-
-- Android/Chrome: menu → **Instalar app**.
-- iPhone/Safari: Compartilhar → **Adicionar à Tela de Início**.
-
-## Como as máquinas aparecem
-
-Ao abrir, o painel carrega heartbeats assinados das últimas 12 horas, mantém no aparelho um histórico autenticado de até 30 dias e envia no máximo um `ping` por minuto. O botão **Atualizar** solicita uma presença nova. O cliente também anuncia ao iniciar e a cada 6 horas, evitando estourar a cota diária do ntfy.sh público quando várias máquinas compartilham o mesmo IP.
-
-A aba **Pad** controla a máquina escolhida ou todas. A aba **Máquinas** lista todos os dispositivos autenticados, mostra o modo automático atual e oferece acesso direto ao Pad ou desinstalação remota com confirmação.
-
-## Segurança do grupo
-
-A única credencial é `groupKey`, salva em `group.local.json` e injetada nos dois executáveis durante o build. O código público dos topics é derivado assim:
+O GitHub Pages publica a pasta `docs/`. A URL atual é:
 
 ```text
-bjp- + primeiros 16 bytes de SHA-256(groupKey)
+https://mrcsmcl.github.io/billiejeanpad/
 ```
 
-O identificador público tem 128 bits, mas não permite descobrir a chave. Comandos e heartbeats usam HMAC-SHA256. Comandos com timestamp fora da janela de 30 segundos são descartados. Heartbeats sem assinatura válida ou antigos não aparecem no painel.
+No primeiro acesso, informe a única chave de `group.local.json`. O navegador deriva o identificador público dos topics, salva a configuração localmente e reconecta automaticamente nas próximas aberturas.
 
-O GitHub Pages hospeda apenas HTML, CSS, JavaScript, manifest, Service Worker e ícones. Nenhum desses arquivos contém a chave.
+As abas são:
 
-## Instalação no Windows
+- **Pad:** sons imediatos e modo automático.
+- **Máquinas:** inventário autenticado, versão instalada e desinstalação remota.
+- **Agenda:** criação e exclusão de regras executadas localmente em cada Windows.
 
-Ao abrir uma das builds, o aplicativo:
+## Agenda
 
-1. copia-se para `%LOCALAPPDATA%\BillieJeanPad\billiejeanpad.exe`;
-2. tenta registrar a Scheduled Task `BillieJeanPad` para o logon;
-3. se a política bloquear tarefas, usa `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`;
-4. inicia a cópia instalada em segundo plano, sem abrir janela.
+A agenda não depende de a PWA ficar aberta. O painel envia uma regra assinada, o cliente salva no `state.dat` e executa localmente.
 
-A build Share apaga o lançador original somente depois desses passos.
+Há três tipos:
 
-Controles locais:
+- **Uma vez:** data e hora específicas.
+- **Toda semana:** dias da semana e horário.
+- **Janela aleatória:** uma execução em horário aleatório entre o início e o fim da janela, nos dias escolhidos.
 
-- `Ctrl + Shift + F12`: interrompe o som e encerra o processo;
-- log: `%LOCALAPPDATA%\BillieJeanPad\log.txt`;
-- remoção: somente pela aba **Máquinas** do painel, com confirmação.
+Cada regra pode tocar um som, uma categoria ou uma surpresa ponderada. Horários usam o fuso IANA enviado pelo navegador; o cliente incorpora a base de fusos do Go para funcionar no Windows. Há limite de 8 regras por máquina.
+
+Se o computador estiver desligado ou suspenso, uma execução atrasada em mais de 5 minutos é descartada. Não existe rajada de eventos acumulados ao acordar. Sons da agenda respeitam o microfone ativo; cliques manuais no Pad continuam tocando durante chamadas.
 
 ## Modo automático
 
-Começa desligado e só toca durante 09:00–18:00, com pausa 12:00–13:30. Sons automáticos são ignorados se o microfone estiver em uso; comandos manuais enviados pelo Pad continuam tocando durante chamadas.
+O modo começa desligado, toca apenas entre 09:00 e 18:00 e pausa entre 12:00 e 13:30.
 
-| Modo | Intervalo aleatório aproximado |
+| Modo | Intervalo aproximado |
 |---|---:|
-| Fantasma | 6–10 horas, cerca de 1 vez por dia |
-| Discreto | 3–5 horas, cerca de 2–3 vezes por dia |
-| Travesso | 1–2 horas, cerca de 4–8 vezes por dia |
+| Fantasma | 6–10 horas |
+| Discreto | 3–5 horas |
+| Travesso | 1–2 horas |
 
-## Atualizar ou trocar de grupo
+A escolha fica persistida no `state.dat`. Trocar o preset recalcula imediatamente o próximo intervalo.
 
-A versão nova pode ser executada sobre uma instalação existente: o lançador encerra a cópia instalada anterior, substitui o arquivo e inicia a atualização. Preserve `group.local.json` para manter o mesmo grupo. Para criar um grupo independente, mova o arquivo atual para um local seguro e rode o script sem ele; uma nova chave será gerada.
+## Atualização automática
 
-## Verificação recomendada
+O cliente instalado consulta silenciosamente `docs/update.json` após o início e depois aproximadamente a cada 12 horas, com jitter. O manifesto contém versão, URL imutável do asset, tamanho, SHA-256 e assinatura Ed25519.
 
-Use uma VM Windows ou máquina de teste. Instale a build Keep, abra o painel, informe a chave de `group.local.json` e confirme que a máquina aparece na aba Máquinas. Teste um som, os três modos automáticos, a hotkey e a desinstalação. Depois repita em uma cópia descartável com a build Share e confirme que apenas o lançador original desaparece.
+O cliente possui somente a chave pública de lançamento. A chave privada fica em `release-key.local.json`, está no `.gitignore` e nunca deve ser enviada ao GitHub.
+
+Quando existe uma versão mais nova, o cliente baixa `BillieJeanPad-Update.exe`, valida URL, tamanho, hash e assinatura, guarda a versão anterior, substitui o executável e inicia a nova. A nova versão grava `healthy.version` após 5 segundos. Se isso não acontecer em 30 segundos, o helper restaura e inicia automaticamente a versão anterior. Uma versão que falhou não é tentada novamente por 24 horas.
+
+A primeira migração para 0.3.0 é manual. Depois que 0.3.0 cria o `state.dat`, os releases seguintes podem usar o payload genérico sem conhecer a chave do grupo.
+
+## Publicar uma atualização
+
+Atualize `Version` em `config.go` e execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1
+```
+
+O script recompila tudo, assina `docs/update.json` e informa a tag esperada. Faça upload de `dist/BillieJeanPad-Update.exe` num GitHub Release com a tag correspondente, por exemplo `v0.3.0`. Só depois publique o novo `docs/update.json`.
+
+Se o GitHub CLI estiver instalado e autenticado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Upload
+```
+
+O endereço do asset segue o formato:
+
+```text
+https://github.com/mrcsmcl/billiejeanpad/releases/download/vVERSAO/BillieJeanPad-Update.exe
+```
+
+## Transporte e presença
+
+O cliente assina o topic geral e o específico da máquina. Heartbeats e comandos usam HMAC-SHA256. O painel valida os anúncios, conserva inventário autenticado localmente e mostra a versão de cada cliente.
+
+Para respeitar os limites do ntfy.sh público, o cliente anuncia ao iniciar, quando recebe `ping` e a cada 6 horas. A conexão longa tem watchdog de 2 minutos baseado nos keepalives do ntfy. O painel limita pings automáticos e explica HTTP 429.
+
+## Segurança
+
+A chave do grupo nunca fica no GitHub Pages. O código público do topic é derivado dos primeiros 128 bits de SHA-256 da chave. Comandos vencem em 30 segundos. O updater aceita somente URLs HTTPS de releases deste repositório e exige assinatura Ed25519 válida. O estado local é protegido pelo DPAPI.
+
+## Arquivos privados e gerados
+
+Não entram no Git:
+
+```text
+group.local.json
+release-key.local.json
+dist/
+sounds/**/*.wav
+```
+
+Preserve `group.local.json` para gerar builds do mesmo grupo e `release-key.local.json` para assinar atualizações futuras. Perder a chave de lançamento impede publicar atualizações aceitas pelos clientes existentes.

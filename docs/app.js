@@ -46,17 +46,30 @@
     secureContextWarning: byId("secureContextWarning"),
     padTab: byId("padTab"),
     machinesTab: byId("machinesTab"),
+    agendaTab: byId("agendaTab"),
     padPanel: byId("padPanel"),
     machinesPanel: byId("machinesPanel"),
+    agendaPanel: byId("agendaPanel"),
     target: byId("target"),
     onlineCount: byId("onlineCount"),
     favoritePads: byId("favoritePads"),
     allSounds: byId("allSounds"),
     randomButton: byId("randomButton"),
     stopButton: byId("stopButton"),
+    stopDock: document.querySelector(".stop-dock"),
     activityLog: byId("activityLog"),
     machineList: byId("machineList"),
     refreshMachines: byId("refreshMachines"),
+    scheduleForm: byId("scheduleForm"),
+    scheduleTarget: byId("scheduleTarget"),
+    scheduleAction: byId("scheduleAction"),
+    scheduleKind: byId("scheduleKind"),
+    scheduleAt: byId("scheduleAt"),
+    scheduleClock: byId("scheduleClock"),
+    windowStart: byId("windowStart"),
+    windowEnd: byId("windowEnd"),
+    timezoneNote: byId("timezoneNote"),
+    scheduleList: byId("scheduleList"),
     toast: byId("toast")
   };
 
@@ -65,6 +78,7 @@
   let reconnectTimer = null;
   let hmacKeyPromise = null;
   let toastTimer = null;
+  let lastScheduleRefresh = 0;
   const hosts = new Map();
   const activity = [];
 
@@ -118,11 +132,18 @@
   }
 
   function switchView(view) {
-    const machines = view === "machines";
-    els.padTab.setAttribute("aria-selected", String(!machines));
-    els.machinesTab.setAttribute("aria-selected", String(machines));
-    els.padPanel.hidden = machines;
-    els.machinesPanel.hidden = !machines;
+    const tabs = {
+      pad: [els.padTab, els.padPanel],
+      machines: [els.machinesTab, els.machinesPanel],
+      agenda: [els.agendaTab, els.agendaPanel]
+    };
+    for (const [name, [tab, panel]] of Object.entries(tabs)) {
+      const active = name === view;
+      tab.setAttribute("aria-selected", String(active));
+      panel.hidden = !active;
+    }
+    els.stopDock.hidden = view !== "pad";
+    if (view === "agenda") renderSchedules();
   }
 
   function setConnection(online, label = online ? "Ao vivo" : "Offline") {
@@ -233,7 +254,7 @@
   }
 
   function canonicalCommand(command) {
-    return [
+    let base = [
       command.cmd,
       command.sound || "",
       command.category || "",
@@ -242,16 +263,47 @@
       command.preset || "",
       command.ts
     ].join("|");
+    if (command.cmd.startsWith("schedule.")) {
+      base += `|${command.scheduleId || ""}|${command.schedule ? canonicalSchedule(command.schedule) : ""}`;
+    }
+    return base;
+  }
+
+  function canonicalSchedule(item) {
+    return [
+      item.id || "",
+      item.kind || "",
+      item.sound || "",
+      item.category || "",
+      item.random ? "1" : "0",
+      item.at || "",
+      (item.weekdays || []).slice().sort((a, b) => a-b).join(","),
+      item.clock || "",
+      item.windowStart || "",
+      item.windowEnd || "",
+      item.timezone || "",
+      item.enabled ? "1" : "0",
+      item.nextRun || 0,
+      item.lastRun || 0
+    ].join("~");
+  }
+
+  function canonicalSchedules(items) {
+    return (items || [])
+      .slice()
+      .sort((a, b) => (a.id || "").localeCompare(b.id || ""))
+      .map(canonicalSchedule)
+      .join(";");
   }
 
   function canonicalHeartbeat(heartbeat) {
-    return [
-      heartbeat.host,
-      heartbeat.v,
-      heartbeat.ts,
-      heartbeat.timer ? "1" : "0",
-      heartbeat.preset || ""
-    ].join("|");
+    const timer = heartbeat.timer ? "1" : "0";
+    if ((heartbeat.protocol || 0) >= 3) {
+      return [heartbeat.host, heartbeat.v, heartbeat.protocol, heartbeat.ts, timer,
+        heartbeat.preset || "", canonicalSchedules(heartbeat.schedules)].join("|");
+    }
+    // Compatibility with clients distributed before protocol 3.
+    return [heartbeat.host, heartbeat.v, heartbeat.ts, timer, heartbeat.preset || ""].join("|");
   }
 
   async function getHmacKey() {
@@ -366,7 +418,7 @@
 
       const mode = document.createElement("p");
       mode.className = "machine-mode";
-      mode.textContent = info.timer ? `Automático: ${PRESET_LABELS[info.preset] || info.preset}` : "Automático: desligado";
+      mode.textContent = `${info.timer ? `Automático: ${PRESET_LABELS[info.preset] || info.preset}` : "Automático: desligado"} · v${info.version || "?"}`;
 
       const actions = document.createElement("div");
       actions.className = "machine-actions";
@@ -415,8 +467,178 @@
       els.target.appendChild(option);
     }
     if ([...els.target.options].some(option => option.value === current)) els.target.value = current;
+
+    const scheduleCurrent = els.scheduleTarget.value;
+    els.scheduleTarget.replaceChildren();
+    const scheduleAll = document.createElement("option");
+    scheduleAll.value = "all";
+    scheduleAll.textContent = "Todas as máquinas";
+    els.scheduleTarget.appendChild(scheduleAll);
+    for (const [id, info] of sorted) {
+      const option = document.createElement("option");
+      option.value = hostTopic(id);
+      option.textContent = `${id} ${now-info.lastSeen <= ONLINE_AFTER_SECONDS ? "●" : "◌"}`;
+      els.scheduleTarget.appendChild(option);
+    }
+    if ([...els.scheduleTarget.options].some(option => option.value === scheduleCurrent)) {
+      els.scheduleTarget.value = scheduleCurrent;
+    }
+
     renderPresetState();
     renderMachines();
+    renderSchedules();
+  }
+
+  function scheduleActionLabel(item) {
+    if (item.sound) return item.sound;
+    if (item.category) return CATEGORY_LABELS[item.category] || item.category;
+    return "Surpresa";
+  }
+
+  function scheduleTimeLabel(item) {
+    const formatter = new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short", timeStyle: "short", timeZone: item.timezone || undefined
+    });
+    if (item.kind === "once") {
+      return item.nextRun ? formatter.format(new Date(item.nextRun * 1000)) : "Concluído";
+    }
+    if (item.kind === "weekly") {
+      return item.nextRun ? `Semanal · ${formatter.format(new Date(item.nextRun * 1000))}` : "Sem próxima execução";
+    }
+    return item.nextRun ? `Janela aleatória · ${formatter.format(new Date(item.nextRun * 1000))}` : "Sem próxima execução";
+  }
+
+  function renderSchedules() {
+    if (!els.scheduleList) return;
+    els.scheduleList.replaceChildren();
+    const entries = [];
+    for (const [host, info] of hosts) {
+      for (const item of info.schedules || []) {
+        if (item.enabled) entries.push({ host, item });
+      }
+    }
+    entries.sort((a, b) => (a.item.nextRun || Number.MAX_SAFE_INTEGER) - (b.item.nextRun || Number.MAX_SAFE_INTEGER));
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "Nenhum agendamento ativo foi informado pelas máquinas.";
+      els.scheduleList.appendChild(empty);
+      return;
+    }
+    for (const { host, item } of entries) {
+      const card = document.createElement("article");
+      card.className = "schedule-card";
+      const head = document.createElement("div");
+      head.className = "schedule-card-head";
+      const text = document.createElement("div");
+      text.className = "schedule-card-title";
+      text.textContent = scheduleActionLabel(item);
+      const machine = document.createElement("span");
+      machine.className = "schedule-card-machine";
+      machine.textContent = host;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "schedule-delete";
+      remove.textContent = "Excluir";
+      remove.addEventListener("click", async () => {
+        if (!confirm(`Excluir este agendamento de “${host}”?`)) return;
+        await send(
+          { cmd: "schedule.delete", scheduleId: item.id },
+          { explicitTarget: hostTopic(host), explicitLabel: host }
+        );
+      });
+      const meta = document.createElement("p");
+      meta.className = "schedule-card-meta";
+      meta.textContent = scheduleTimeLabel(item);
+      head.append(text, machine, remove);
+      card.append(head, meta);
+      els.scheduleList.appendChild(card);
+    }
+  }
+
+  function setupScheduleForm() {
+    const weekdays = ["D", "S", "T", "Q", "Q", "S", "S"];
+    document.querySelectorAll("[data-weekday-group]").forEach(group => {
+      weekdays.forEach((label, day) => {
+        const wrapper = document.createElement("label");
+        wrapper.className = "weekday-option";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = String(day);
+        input.checked = day >= 1 && day <= 5;
+        const visual = document.createElement("span");
+        visual.textContent = label;
+        wrapper.append(input, visual);
+        group.appendChild(wrapper);
+      });
+    });
+
+    const options = [
+      ["random", "Surpresa"],
+      ["category:subtle", "Categoria · Sutil"],
+      ["category:punchy", "Categoria · Médio"],
+      ["category:scare", "Categoria · Susto"]
+    ];
+    for (const [category, names] of Object.entries(SOUNDS)) {
+      for (const name of names) options.push([`sound:${name}`, `${CATEGORY_LABELS[category]} · ${name}`]);
+    }
+    for (const [value, label] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      els.scheduleAction.appendChild(option);
+    }
+
+    const defaultAt = new Date(Date.now() + 60 * 60 * 1000);
+    defaultAt.setSeconds(0, 0);
+    const offset = defaultAt.getTimezoneOffset() * 60 * 1000;
+    els.scheduleAt.value = new Date(defaultAt.getTime()-offset).toISOString().slice(0, 16);
+    els.timezoneNote.textContent = `Fuso: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`;
+  }
+
+  function selectedWeekdays(kind) {
+    return [...document.querySelectorAll(`[data-weekday-group="${kind}"] input:checked`)]
+      .map(input => Number(input.value));
+  }
+
+  function buildScheduleFromForm() {
+    const kind = els.scheduleKind.value;
+    const action = els.scheduleAction.value;
+    const item = {
+      id: "",
+      kind,
+      sound: "",
+      category: "",
+      random: action === "random",
+      at: "",
+      weekdays: [],
+      clock: "",
+      windowStart: "",
+      windowEnd: "",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo",
+      enabled: true,
+      nextRun: 0,
+      lastRun: 0
+    };
+    if (action.startsWith("sound:")) item.sound = action.slice(6);
+    if (action.startsWith("category:")) item.category = action.slice(9);
+    if (kind === "once") {
+      const date = new Date(els.scheduleAt.value);
+      if (Number.isNaN(date.getTime()) || date <= new Date()) throw new Error("Escolha uma data futura.");
+      item.at = date.toISOString();
+    } else if (kind === "weekly") {
+      item.weekdays = selectedWeekdays("weekly");
+      item.clock = els.scheduleClock.value;
+      if (!item.weekdays.length || !item.clock) throw new Error("Escolha dias e horário.");
+    } else {
+      item.weekdays = selectedWeekdays("window");
+      item.windowStart = els.windowStart.value;
+      item.windowEnd = els.windowEnd.value;
+      if (!item.weekdays.length || !item.windowStart || !item.windowEnd || item.windowStart >= item.windowEnd) {
+        throw new Error("Confira os dias e a janela de horário.");
+      }
+    }
+    return item;
   }
 
   function rosterStorageKey() {
@@ -446,7 +668,9 @@
       lastSeen: payload.ts,
       timer: Boolean(payload.timer),
       preset: payload.preset || "discreto",
-      version: payload.v
+      version: payload.v,
+      protocol: payload.protocol || 0,
+      schedules: Array.isArray(payload.schedules) ? payload.schedules : []
     });
     saveRosterCache();
     if (render) renderHosts();
@@ -550,6 +774,41 @@
   els.closeSettings.addEventListener("click", closeSettings);
   els.padTab.addEventListener("click", () => switchView("pad"));
   els.machinesTab.addEventListener("click", () => switchView("machines"));
+  els.agendaTab.addEventListener("click", () => {
+    switchView("agenda");
+    const now = Date.now();
+    if (config && now-lastScheduleRefresh >= MIN_PING_INTERVAL_MS) {
+      lastScheduleRefresh = now;
+      send({ cmd: "schedule.list" }, { silent: true, forceAll: true });
+    }
+  });
+  els.scheduleKind.addEventListener("change", () => {
+    document.querySelectorAll("[data-kind-fields]").forEach(group => {
+      group.hidden = group.dataset.kindFields !== els.scheduleKind.value;
+    });
+  });
+  els.scheduleForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!config) {
+      openSettings();
+      return;
+    }
+    try {
+      const schedule = buildScheduleFromForm();
+      const destination = els.scheduleTarget.value;
+      if (!destination) throw new Error("Escolha uma máquina.");
+      const label = destination === "all" ? "Todas as máquinas" : els.scheduleTarget.selectedOptions[0].textContent.replace(/\s+[●◌]$/, "");
+      const sent = await send(
+        { cmd: "schedule.upsert", schedule },
+        { explicitTarget: destination, explicitLabel: label }
+      );
+      if (sent) {
+        showToast("Agendamento enviado. A lista atualizará após a confirmação da máquina.");
+      }
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
   els.refreshMachines.addEventListener("click", async () => {
     if (!config) {
       openSettings();
@@ -612,6 +871,7 @@
 
   async function initialize() {
     buildSounds();
+    setupScheduleForm();
     renderActivity();
     config = loadConfig();
     const imported = await importInviteFragment();

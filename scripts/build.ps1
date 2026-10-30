@@ -54,10 +54,11 @@ if ($groupKey -notmatch '^[0-9a-f]{64}$') {
 $topicPrefix = Get-TopicPrefix $groupKey
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 
-function Invoke-BillieJeanBuild([string]$FileName, [bool]$DeleteLauncher) {
+function Invoke-BillieJeanBuild([string]$FileName, [bool]$DeleteLauncher, [bool]$GenericUpdate = $false) {
   $outputPath = Join-Path $distDir $FileName
   $deleteValue = if ($DeleteLauncher) { "true" } else { "false" }
-  $ldflags = "-s -w -H windowsgui -X main.GroupKey=$groupKey -X main.DeleteLauncher=$deleteValue"
+  $embeddedKey = if ($GenericUpdate) { "UNSET" } else { $groupKey }
+  $ldflags = "-s -w -H windowsgui -X main.GroupKey=$embeddedKey -X main.DeleteLauncher=$deleteValue"
 
   & go build -trimpath -ldflags $ldflags -o $outputPath .
   if ($LASTEXITCODE -ne 0) {
@@ -73,14 +74,16 @@ try {
   Write-Host "Building Billie Jean Pad..."
   Invoke-BillieJeanBuild "BillieJeanPad-Share.exe" $true
   Invoke-BillieJeanBuild "BillieJeanPad-Keep.exe" $false
+  Invoke-BillieJeanBuild "BillieJeanPad-Update.exe" $false $true
 } finally {
   Pop-Location
 }
 
 Write-Host ""
 Write-Host "Builds ready in: $distDir" -ForegroundColor Green
-Write-Host "  Share: installs, then deletes only the downloaded launcher."
-Write-Host "  Keep:  installs and keeps the downloaded launcher."
+Write-Host "  Share:  installs, then deletes only the downloaded launcher."
+Write-Host "  Keep:   installs and keeps the downloaded launcher."
+Write-Host "  Update: generic signed-release payload; requires protected local state."
 Write-Host ""
 Write-Host "Group key: $groupKey"
 Write-Host "Derived public topic: $topicPrefix"

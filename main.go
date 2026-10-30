@@ -12,7 +12,10 @@ import (
 
 // timer is package-level so onNtfyMessage can toggle it and heartbeat
 // can read its state.
-var timer = NewTimer()
+var (
+	timer     = NewTimer()
+	scheduler *Scheduler
+)
 
 func main() {
 	versionFlag := flag.Bool("version", false,
@@ -28,11 +31,20 @@ func main() {
 	logf("billie jean pad %s starting (pid=%d, args=%v)",
 		Version, os.Getpid(), os.Args)
 
-	if GroupKey == "UNSET" {
-		logf("group key missing; build with scripts/build.ps1")
+	if err := initializeState(); err != nil {
+		logf("state initialization failed: %v", err)
 		showConfigurationError()
 		return
 	}
+
+	if GroupKey == "UNSET" {
+		logf("group key missing after state initialization")
+		showConfigurationError()
+		return
+	}
+	persisted := stateSnapshot()
+	timer.SetPreset(persisted.TimerPreset)
+	timer.SetEnabled(persisted.TimerEnabled)
 
 	// Self-install FIRST (before taking the global mutex). This way the
 	// original double-clicked process never holds the mutex — otherwise
@@ -62,6 +74,7 @@ func main() {
 
 	logf("entering main run loop (catalog: %d sounds)", len(sounds.All))
 
+	scheduler = NewScheduler(stateSnapshot().Schedules)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -77,6 +90,13 @@ func main() {
 		logf("timer tick: %s/%s", s.Category, s.Name)
 		playWAVAutomatically(s.Data)
 	})
+
+	// Persisted schedules execute locally even with the controller closed.
+	go scheduler.Loop(ctx)
+
+	// Mark this version healthy for rollback and check signed releases silently.
+	go markHealthyLater(ctx)
+	go updateLoop(ctx)
 
 	// Heartbeat on the roster topic so the control panel sees us online.
 	go heartbeatLoop(ctx)

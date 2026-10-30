@@ -1,5 +1,6 @@
-# Private group credentials
+# Private group and release credentials
 /group.local.json
+/release-key.local.json
 
 # Built binaries
 /*.exe
