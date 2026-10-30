@@ -51,7 +51,7 @@ Para instalar no celular:
 
 ## Como as máquinas aparecem
 
-Ao iniciar, o cliente assina o canal geral e o canal específico da máquina. Em seguida, publica um heartbeat assinado. O painel envia um `ping` ao conectar, valida a assinatura dos heartbeats e mostra somente máquinas do grupo com presença válida e recente.
+Ao abrir, o painel carrega heartbeats assinados das últimas 12 horas, mantém no aparelho um histórico autenticado de até 30 dias e envia no máximo um `ping` por minuto. O botão **Atualizar** solicita uma presença nova. O cliente também anuncia ao iniciar e a cada 6 horas, evitando estourar a cota diária do ntfy.sh público quando várias máquinas compartilham o mesmo IP.
 
 A aba **Pad** controla a máquina escolhida ou todas. A aba **Máquinas** lista todos os dispositivos autenticados, mostra o modo automático atual e oferece acesso direto ao Pad ou desinstalação remota com confirmação.
 
@@ -86,7 +86,7 @@ Controles locais:
 
 ## Modo automático
 
-Começa desligado e só toca durante 09:00–18:00, com pausa 12:00–13:30. Se o microfone estiver em uso, o som é ignorado.
+Começa desligado e só toca durante 09:00–18:00, com pausa 12:00–13:30. Sons automáticos são ignorados se o microfone estiver em uso; comandos manuais enviados pelo Pad continuam tocando durante chamadas.
 
 | Modo | Intervalo aleatório aproximado |
 |---|---:|

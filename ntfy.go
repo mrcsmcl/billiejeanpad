@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"os"
@@ -58,7 +59,11 @@ func subscribeLoop(ctx context.Context, topics []string, onMsg func(ntfyMsg)) {
 
 	backoff := time.Second
 	for ctx.Err() == nil {
+		started := time.Now()
 		err := subscribeOnce(ctx, url, onMsg)
+		if time.Since(started) > time.Minute {
+			backoff = time.Second
+		}
 		if err != nil && ctx.Err() == nil {
 			logf("subscribe reconnect in %v: %v", backoff, err)
 		}
@@ -73,40 +78,93 @@ func subscribeLoop(ctx context.Context, topics []string, onMsg func(ntfyMsg)) {
 	}
 }
 
+type scanResult struct {
+	line []byte
+	err  error
+}
+
 func subscribeOnce(ctx context.Context, url string, onMsg func(ntfyMsg)) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	// No per-request timeout: the body is a long-lived stream and the
-	// context carries cancellation.
 	client := &http.Client{Timeout: 0}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ntfy subscribe returned HTTP %d", resp.StatusCode)
+	}
 
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		var m ntfyMsg
-		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
-			continue
+	results := make(chan scanResult, 1)
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		for sc.Scan() {
+			line := append([]byte(nil), sc.Bytes()...)
+			select {
+			case results <- scanResult{line: line}:
+			case <-done:
+				return
+			}
 		}
-		if m.Event == "message" {
-			onMsg(m)
+		select {
+		case results <- scanResult{err: sc.Err()}:
+		case <-done:
+		}
+	}()
+
+	// ntfy emits keepalives on an active stream. A connection that produces
+	// no line for two minutes is considered half-open and is re-established.
+	idle := time.NewTimer(2 * time.Minute)
+	defer idle.Stop()
+	for {
+		select {
+		case result := <-results:
+			if result.line == nil {
+				if result.err != nil {
+					return result.err
+				}
+				return fmt.Errorf("ntfy subscription closed")
+			}
+			if !idle.Stop() {
+				select {
+				case <-idle.C:
+				default:
+				}
+			}
+			idle.Reset(2 * time.Minute)
+
+			var m ntfyMsg
+			if err := json.Unmarshal(result.line, &m); err != nil {
+				continue
+			}
+			if m.Event == "message" {
+				onMsg(m)
+			}
+		case <-idle.C:
+			return fmt.Errorf("ntfy stream idle timeout")
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
-	return sc.Err()
 }
 
 // publish posts a raw body to a topic. Fire-and-forget: errors are
 // logged by the caller when it cares.
 func publish(topic, body string) error {
 	req, _ := http.NewRequest("POST", BaseURL+"/"+topic, strings.NewReader(body))
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("ntfy publish returned HTTP %d", resp.StatusCode)
+	}
 	return nil
 }
 
@@ -170,12 +228,13 @@ func onNtfyMessage(m ntfyMsg) {
 	}
 }
 
-// heartbeatLoop announces this host on the roster topic every 5 minutes.
-// Slower than the design doc's earlier 2min to leave slack within the
-// ntfy.sh public rate limits.
+// heartbeatLoop announces at startup and every six hours. Routine discovery
+// comes from a signed ping when the controller opens. This stays well below
+// ntfy.sh's public daily message quota, even when many office machines share
+// one public IP address.
 func heartbeatLoop(ctx context.Context) {
 	sendHeartbeat()
-	t := time.NewTicker(5 * time.Minute)
+	t := time.NewTicker(6 * time.Hour)
 	defer t.Stop()
 	for {
 		select {

@@ -3,7 +3,10 @@
 
   const STORAGE_KEY = "billie-jean-pad.control.config.v2";
   const MAX_ACTIVITY = 6;
-  const STALE_AFTER_SECONDS = 7 * 60;
+  const ONLINE_AFTER_SECONDS = 15 * 60;
+  const ROSTER_HISTORY_SECONDS = 12 * 60 * 60;
+  const ROSTER_MEMORY_SECONDS = 30 * 24 * 60 * 60;
+  const MIN_PING_INTERVAL_MS = 60 * 1000;
 
   const SOUNDS = {
     subtle: ["Hee", "Huh", "Uh", "Hoo", "He", "Kiss", "Sshh", "Ha", "Ha 2", "Ooh"],
@@ -53,6 +56,7 @@
     stopButton: byId("stopButton"),
     activityLog: byId("activityLog"),
     machineList: byId("machineList"),
+    refreshMachines: byId("refreshMachines"),
     toast: byId("toast")
   };
 
@@ -270,7 +274,7 @@
   async function verifyHeartbeat(heartbeat) {
     if (!heartbeat?.host || !heartbeat?.v || !heartbeat?.sig || !Number.isFinite(heartbeat.ts)) return false;
     const age = Math.abs(Math.floor(Date.now() / 1000) - heartbeat.ts);
-    if (age > STALE_AFTER_SECONDS) return false;
+    if (age > ROSTER_HISTORY_SECONDS) return false;
     const expected = await signText(canonicalHeartbeat(heartbeat));
     return expected === heartbeat.sig.toLowerCase();
   }
@@ -293,6 +297,10 @@
         headers: { "Content-Type": "text/plain;charset=UTF-8" },
         body: JSON.stringify(command)
       });
+      if (response.status === 429) {
+        setConnection(false, "Limite ntfy");
+        throw new Error("O ntfy limitou este IP. Aguarde a liberação ou use outro servidor.");
+      }
       if (!response.ok) throw new Error(`Servidor respondeu ${response.status}.`);
       if (!silent) {
         addActivity(command, destinationLabel);
@@ -339,7 +347,7 @@
     const now = Math.floor(Date.now() / 1000);
     const sorted = [...hosts.entries()].sort((a, b) => b[1].lastSeen - a[1].lastSeen);
     for (const [id, info] of sorted) {
-      const online = now - info.lastSeen <= STALE_AFTER_SECONDS;
+      const online = now - info.lastSeen <= ONLINE_AFTER_SECONDS;
       const card = document.createElement("article");
       card.className = "machine-card" + (online ? " is-online" : "");
 
@@ -366,7 +374,6 @@
       openPad.type = "button";
       openPad.className = "machine-action";
       openPad.textContent = "Abrir no Pad";
-      openPad.disabled = !online;
       openPad.addEventListener("click", () => {
         els.target.value = hostTopic(id);
         renderPresetState();
@@ -377,7 +384,6 @@
       remove.type = "button";
       remove.className = "machine-action danger";
       remove.textContent = "Desinstalar";
-      remove.disabled = !online;
       remove.addEventListener("click", () => {
         const confirmed = confirm(`Desinstalar Billie Jean Pad de “${id}”?\n\nO aplicativo será removido dessa máquina.`);
         if (!confirmed) return;
@@ -393,7 +399,7 @@
     const now = Math.floor(Date.now() / 1000);
     const current = els.target.value;
     const sorted = [...hosts.entries()].sort((a, b) => b[1].lastSeen - a[1].lastSeen);
-    const onlineCount = sorted.filter(([, info]) => now - info.lastSeen <= STALE_AFTER_SECONDS).length;
+    const onlineCount = sorted.filter(([, info]) => now - info.lastSeen <= ONLINE_AFTER_SECONDS).length;
     els.onlineCount.textContent = String(onlineCount);
 
     els.target.replaceChildren();
@@ -402,7 +408,7 @@
     allOption.textContent = "Todas as máquinas";
     els.target.appendChild(allOption);
     for (const [id, info] of sorted) {
-      const online = now - info.lastSeen <= STALE_AFTER_SECONDS;
+      const online = now - info.lastSeen <= ONLINE_AFTER_SECONDS;
       const option = document.createElement("option");
       option.value = hostTopic(id);
       option.textContent = `${id} ${online ? "●" : "◌"}`;
@@ -413,20 +419,78 @@
     renderMachines();
   }
 
+  function rosterStorageKey() {
+    return config ? `${STORAGE_KEY}.roster.${config.prefix}` : "";
+  }
+
+  function saveRosterCache() {
+    if (!config) return;
+    localStorage.setItem(rosterStorageKey(), JSON.stringify(Object.fromEntries(hosts)));
+  }
+
+  function loadRosterCache() {
+    hosts.clear();
+    if (!config) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem(rosterStorageKey()) || "{}");
+      const now = Math.floor(Date.now() / 1000);
+      for (const [host, info] of Object.entries(cached)) {
+        if (info?.lastSeen && now-info.lastSeen <= ROSTER_MEMORY_SECONDS) hosts.set(host, info);
+      }
+    } catch (_) {}
+  }
+
+  async function acceptHeartbeat(payload, render = true) {
+    if (!(await verifyHeartbeat(payload))) return false;
+    hosts.set(payload.host, {
+      lastSeen: payload.ts,
+      timer: Boolean(payload.timer),
+      preset: payload.preset || "discreto",
+      version: payload.v
+    });
+    saveRosterCache();
+    if (render) renderHosts();
+    return true;
+  }
+
   async function processRosterMessage(event) {
     try {
       const envelope = JSON.parse(event.data);
       if (envelope.event !== "message") return;
-      const payload = JSON.parse(envelope.message);
-      if (!(await verifyHeartbeat(payload))) return;
-      hosts.set(payload.host, {
-        lastSeen: payload.ts,
-        timer: Boolean(payload.timer),
-        preset: payload.preset || "discreto",
-        version: payload.v
-      });
-      renderHosts();
+      await acceptHeartbeat(JSON.parse(envelope.message));
     } catch (_) {}
+  }
+
+  async function loadRecentRoster() {
+    const topic = encodeURIComponent(config.prefix + "-roster");
+    const response = await fetch(`${config.baseUrl}/${topic}/json?poll=1&since=12h`, {
+      headers: { "Accept": "application/x-ndjson" }
+    });
+    if (response.status === 429) {
+      setConnection(false, "Limite ntfy");
+      throw new Error("O ntfy limitou este IP. As máquinas voltarão após a liberação.");
+    }
+    if (!response.ok) throw new Error(`Não foi possível carregar as máquinas (${response.status}).`);
+
+    const lines = (await response.text()).split("\n").filter(Boolean);
+    for (const line of lines) {
+      try {
+        const envelope = JSON.parse(line);
+        if (envelope.event !== "message") continue;
+        await acceptHeartbeat(JSON.parse(envelope.message), false);
+      } catch (_) {}
+    }
+    renderHosts();
+  }
+
+  async function refreshPresence(manual = false) {
+    const pingKey = `${STORAGE_KEY}.lastPing.${config.prefix}`;
+    const now = Date.now();
+    const lastPing = Number(localStorage.getItem(pingKey) || 0);
+    if (!manual && now-lastPing < MIN_PING_INTERVAL_MS) return;
+    localStorage.setItem(pingKey, String(now));
+    const ok = await send({ cmd: "ping" }, { silent: !manual, forceAll: true });
+    if (manual && ok) showToast("Atualização solicitada. Aguarde alguns segundos.");
   }
 
   function disconnect() {
@@ -441,15 +505,20 @@
     disconnect();
     if (!config) return;
     eventSource = new EventSource(`${config.baseUrl}/${encodeURIComponent(config.prefix + "-roster")}/sse`);
-    eventSource.addEventListener("open", () => {
+    eventSource.addEventListener("open", async () => {
       setConnection(true);
-      send({ cmd: "ping" }, { silent: true, forceAll: true });
+      try {
+        await loadRecentRoster();
+        await refreshPresence(false);
+      } catch (error) {
+        showToast(error.message, "error");
+      }
     });
     eventSource.addEventListener("message", processRosterMessage);
     eventSource.addEventListener("error", () => {
       setConnection(false, "Reconectando");
       eventSource?.close();
-      reconnectTimer = setTimeout(connect, 5000);
+      reconnectTimer = setTimeout(connect, 15000);
     });
   }
 
@@ -481,6 +550,18 @@
   els.closeSettings.addEventListener("click", closeSettings);
   els.padTab.addEventListener("click", () => switchView("pad"));
   els.machinesTab.addEventListener("click", () => switchView("machines"));
+  els.refreshMachines.addEventListener("click", async () => {
+    if (!config) {
+      openSettings();
+      return;
+    }
+    try {
+      await loadRecentRoster();
+      await refreshPresence(true);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  });
   els.settingsForm.addEventListener("submit", async event => {
     event.preventDefault();
     const baseUrl = els.baseUrlInput.value.trim();
@@ -490,7 +571,7 @@
       return;
     }
     await saveConfig({ baseUrl, key });
-    hosts.clear();
+    loadRosterCache();
     renderHosts();
     els.settingsDialog.close();
     connect();
@@ -499,7 +580,9 @@
   els.copyInviteButton.addEventListener("click", copyInvite);
   els.clearConfigButton.addEventListener("click", () => {
     if (!confirm("Apagar a chave salva neste aparelho?")) return;
+    const cacheKey = rosterStorageKey();
     localStorage.removeItem(STORAGE_KEY);
+    if (cacheKey) localStorage.removeItem(cacheKey);
     config = null;
     hosts.clear();
     disconnect();
@@ -533,6 +616,7 @@
     config = loadConfig();
     const imported = await importInviteFragment();
     if (imported) config = loadConfig();
+    loadRosterCache();
     renderHosts();
     registerServiceWorker();
     if (!window.crypto?.subtle) {

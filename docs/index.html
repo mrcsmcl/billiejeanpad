@@ -112,8 +112,11 @@
 
       <section id="machinesPanel" role="tabpanel" aria-labelledby="machinesTab" hidden>
         <div class="machines-head">
-          <h2>Todas as máquinas</h2>
-          <p>Somente dispositivos com presença autenticada aparecem aqui.</p>
+          <div>
+            <h2>Todas as máquinas</h2>
+            <p>Somente dispositivos com presença autenticada aparecem aqui.</p>
+          </div>
+          <button class="refresh-button" id="refreshMachines" type="button">Atualizar</button>
         </div>
         <div class="machine-list" id="machineList">
           <div class="empty-state">Nenhuma máquina encontrada.</div>

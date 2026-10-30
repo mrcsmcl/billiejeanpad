@@ -192,9 +192,16 @@ summary:hover { color: var(--silver); background: var(--deck); }
 .activity-target { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-state { padding: 14px 0; color: var(--faint); font-size: 11px; }
 
-.machines-head { margin-bottom: 16px; }
+.machines-head { display: flex; align-items: start; gap: 12px; margin-bottom: 16px; }
+.machines-head > div { min-width: 0; flex: 1; }
 .machines-head h2 { font-size: 22px; }
 .machines-head p { margin: 5px 0 0; color: var(--faint); font-size: 12px; }
+.refresh-button {
+  min-height: 40px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--raised); color: var(--silver);
+  cursor: pointer; font-size: 12px; font-weight: 700;
+}
+.refresh-button:hover { background: var(--pressed); border-color: var(--line-strong); }
 .machine-list { display: flex; flex-direction: column; gap: 8px; }
 .machine-card { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--deck); }
 .machine-summary { display: flex; align-items: center; gap: 10px; }

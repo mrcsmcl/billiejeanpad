@@ -1,4 +1,4 @@
-const CACHE = "billie-jean-pad-control-v7";
+const CACHE = "billie-jean-pad-control-v9";
 const ASSETS = [
   "./",
   "./index.html",

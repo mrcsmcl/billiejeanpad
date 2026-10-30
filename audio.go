@@ -17,10 +17,19 @@ var (
 	lastPlay time.Time
 )
 
-// playWAV plays an in-memory WAV blob asynchronously via winmm.PlaySoundW.
-// It respects the local rate limit (MinPlayGap) and quiet mode (microphone
-// in use). Returns true if the sound actually started playing.
+// playWAV plays a manual command. Explicit operator actions are allowed even
+// during calls; only automatic timer events use quiet mode.
 func playWAV(data []byte) bool {
+	return playWAVWithQuietMode(data, false)
+}
+
+// playWAVAutomatically suppresses automatic sounds while the microphone is
+// active so a random timer event does not interrupt a call.
+func playWAVAutomatically(data []byte) bool {
+	return playWAVWithQuietMode(data, true)
+}
+
+func playWAVWithQuietMode(data []byte, respectMicrophone bool) bool {
 	if len(data) == 0 {
 		return false
 	}
@@ -31,9 +40,9 @@ func playWAV(data []byte) bool {
 		logf("skip: rate limit (%.1fs since last)", time.Since(lastPlay).Seconds())
 		return false
 	}
-	if micInUse() {
+	if respectMicrophone && micInUse() {
 		rateMu.Unlock()
-		logf("skip: microphone in use (call detected)")
+		logf("skip automatic sound: microphone in use")
 		return false
 	}
 	lastPlay = time.Now()

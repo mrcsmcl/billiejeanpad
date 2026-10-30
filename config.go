@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Version = "2.0.0"
+	Version = "2.1.0"
 
 	// BaseURL is the ntfy server. Point at a self-hosted server if the
 	// public ntfy.sh rate limits become a problem.
@@ -14,10 +14,6 @@ const (
 
 	// MaxCmdAge is the command staleness window in seconds.
 	MaxCmdAge = 30
-
-	// MaxHeartbeatAge limits cached roster announcements accepted by the
-	// controller. It is longer than the 5-minute heartbeat interval.
-	MaxHeartbeatAge = 7 * 60
 
 	// MinPlayGap is the local rate limit between sounds, in seconds.
 	MinPlayGap = 3

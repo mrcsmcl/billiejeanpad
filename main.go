@@ -75,7 +75,7 @@ func main() {
 			return
 		}
 		logf("timer tick: %s/%s", s.Category, s.Name)
-		playWAV(s.Data)
+		playWAVAutomatically(s.Data)
 	})
 
 	// Heartbeat on the roster topic so the control panel sees us online.
