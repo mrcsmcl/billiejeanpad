@@ -96,7 +96,7 @@ Atualize `Version` em `config.go` e execute:
 powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1
 ```
 
-O script recompila tudo, assina `docs/update.json` e informa a tag esperada. Faça upload de `dist/BillieJeanPad-Update.exe` num GitHub Release com a tag correspondente, por exemplo `v0.3.0`. Só depois publique o novo `docs/update.json`.
+O script recompila tudo, assina `docs/update.json` e informa a tag esperada. Faça upload de `dist/BillieJeanPad-Update.exe` num GitHub Release com a tag correspondente, por exemplo `v0.3.2`. Só depois publique o novo `docs/update.json`.
 
 Se o GitHub CLI estiver instalado e autenticado:
 
