@@ -89,17 +89,23 @@ func install() (installed bool, err error) {
 		return false, fmt.Errorf("mkdir: %w", err)
 	}
 	legacyPath := filepath.Join(installDir(), LegacyExeName)
+	runningLegacy, _ := sameFile(selfPath, legacyPath)
 	_, currentErr := os.Stat(installExePath())
 	_, legacyErr := os.Stat(legacyPath)
 	if currentErr == nil || legacyErr == nil {
 		logf("existing installation found; stopping it before update")
 		for _, image := range []string{InstalledExeName, LegacyExeName} {
+			if runningLegacy && strings.EqualFold(image, LegacyExeName) {
+				continue
+			}
 			stopCmd := exec.Command("taskkill", "/f", "/im", image)
 			stopCmd.SysProcAttr = hiddenProcessAttributes()
 			_ = stopCmd.Run()
 		}
 		time.Sleep(500 * time.Millisecond)
-		_ = os.Remove(legacyPath)
+		if !runningLegacy {
+			_ = os.Remove(legacyPath)
+		}
 	}
 	if err := copyFileWithRetry(selfPath, installExePath()); err != nil {
 		return false, fmt.Errorf("copy exe: %w", err)
@@ -141,6 +147,11 @@ func install() (installed bool, err error) {
 		}
 	} else if err := startInstalledCopy(); err != nil {
 		return false, fmt.Errorf("start installed copy: %w", err)
+	}
+	if runningLegacy {
+		if err := scheduleFileDelete(selfPath); err != nil {
+			logf("legacy process cleanup failed: %v", err)
+		}
 	}
 
 	return true, nil
@@ -246,7 +257,11 @@ func scheduleLauncherDelete() error {
 		return nil
 	}
 
-	target := quotePowerShellLiteral(selfPath)
+	return scheduleFileDelete(selfPath)
+}
+
+func scheduleFileDelete(targetPath string) error {
+	target := quotePowerShellLiteral(targetPath)
 	script := fmt.Sprintf(`$target=%s; Wait-Process -Id %d -ErrorAction SilentlyContinue; for ($i=0; $i -lt 20; $i++) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $target)) { break }; Start-Sleep -Milliseconds 350 }`, target, os.Getpid())
 	return startHiddenPowerShell(script)
 }

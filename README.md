@@ -1,4 +1,4 @@
-# Billie Jean Pad 0.3.1
+# Billie Jean Pad 0.3.2
 
 Soundboard colaborativo para Windows controlado por uma PWA no celular. A linha 0.3 adiciona agenda persistente, configuração local protegida e atualização automática silenciosa com assinatura Ed25519 e rollback.
 

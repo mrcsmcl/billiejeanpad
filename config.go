@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Version = "0.3.1"
+	Version = "0.3.2"
 
 	UpdateManifestURL = "https://mrcsmcl.github.io/billiejeanpad/update.json"
 	ReleasePublicKey  = "f4565d8a24d7cc7d839d1e49d239464353cb93151e4e44c267dd8a5090ba3129"
