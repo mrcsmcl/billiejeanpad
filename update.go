@@ -78,7 +78,7 @@ func checkAndApplyUpdate(ctx context.Context) {
 		return
 	}
 
-	pending := filepath.Join(installDir(), "billiejeanpad.update.exe")
+	pending := filepath.Join(installDir(), "bjp-agent.update.exe")
 	if err := downloadAndVerifyUpdate(ctx, manifest, pending); err != nil {
 		logf("update %s download: %v", manifest.Version, err)
 		_ = os.Remove(pending)
@@ -185,7 +185,7 @@ func downloadAndVerifyUpdate(ctx context.Context, item updateManifest, destinati
 
 func applyUpdate(pending, newVersion string) error {
 	exe := installExePath()
-	backup := filepath.Join(installDir(), "billiejeanpad.previous.exe")
+	backup := filepath.Join(installDir(), "bjp-agent.previous.exe")
 	healthy := filepath.Join(installDir(), "healthy.version")
 	failed := filepath.Join(installDir(), "update.failed")
 	script := fmt.Sprintf(

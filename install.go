@@ -64,7 +64,7 @@ func installDir() string {
 }
 
 func installExePath() string {
-	return filepath.Join(installDir(), "billiejeanpad.exe")
+	return filepath.Join(installDir(), InstalledExeName)
 }
 
 // install performs first-run setup if the running binary is not the
@@ -88,12 +88,18 @@ func install() (installed bool, err error) {
 	if err := os.MkdirAll(installDir(), 0o755); err != nil {
 		return false, fmt.Errorf("mkdir: %w", err)
 	}
-	if _, statErr := os.Stat(installExePath()); statErr == nil {
+	legacyPath := filepath.Join(installDir(), LegacyExeName)
+	_, currentErr := os.Stat(installExePath())
+	_, legacyErr := os.Stat(legacyPath)
+	if currentErr == nil || legacyErr == nil {
 		logf("existing installation found; stopping it before update")
-		stopCmd := exec.Command("taskkill", "/f", "/im", "billiejeanpad.exe")
-		stopCmd.SysProcAttr = hiddenProcessAttributes()
-		_ = stopCmd.Run()
+		for _, image := range []string{InstalledExeName, LegacyExeName} {
+			stopCmd := exec.Command("taskkill", "/f", "/im", image)
+			stopCmd.SysProcAttr = hiddenProcessAttributes()
+			_ = stopCmd.Run()
+		}
 		time.Sleep(500 * time.Millisecond)
+		_ = os.Remove(legacyPath)
 	}
 	if err := copyFileWithRetry(selfPath, installExePath()); err != nil {
 		return false, fmt.Errorf("copy exe: %w", err)
@@ -192,7 +198,7 @@ func uninstall() {
 	}
 
 	dir := quotePowerShellLiteral(installDir())
-	script := fmt.Sprintf(`$target=%s; Start-Sleep -Milliseconds 350; Get-Process -Name 'billiejeanpad' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; for ($i=0; $i -lt 20; $i++) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $target)) { break }; Start-Sleep -Milliseconds 350 }`, dir)
+	script := fmt.Sprintf(`$target=%s; Start-Sleep -Milliseconds 350; Get-Process -Name 'BJPAgent','billiejeanpad' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; for ($i=0; $i -lt 20; $i++) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $target)) { break }; Start-Sleep -Milliseconds 350 }`, dir)
 	if err := startHiddenPowerShell(script); err != nil {
 		logf("uninstall cleanup helper failed: %v", err)
 	}

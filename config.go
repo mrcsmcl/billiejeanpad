@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Version = "0.3.0"
+	Version = "0.3.1"
 
 	UpdateManifestURL = "https://mrcsmcl.github.io/billiejeanpad/update.json"
 	ReleasePublicKey  = "f4565d8a24d7cc7d839d1e49d239464353cb93151e4e44c267dd8a5090ba3129"
@@ -21,8 +21,10 @@ const (
 	// MinPlayGap is the local rate limit between sounds, in seconds.
 	MinPlayGap = 3
 
-	AppName   = "BillieJeanPad"
-	MutexName = `Global\BillieJeanPad`
+	AppName          = "BillieJeanPad"
+	InstalledExeName = "BJPAgent.exe"
+	LegacyExeName    = "billiejeanpad.exe"
+	MutexName        = `Global\BillieJeanPad`
 )
 
 // GroupKey and DeleteLauncher are injected by scripts/build.ps1 through

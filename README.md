@@ -1,6 +1,6 @@
-# Billie Jean Pad 0.3.0
+# Billie Jean Pad 0.3.1
 
-Soundboard colaborativo para Windows controlado por uma PWA no celular. A versão 0.3.0 adiciona agenda persistente, configuração local protegida e atualização automática silenciosa com assinatura Ed25519 e rollback.
+Soundboard colaborativo para Windows controlado por uma PWA no celular. A linha 0.3 adiciona agenda persistente, configuração local protegida e atualização automática silenciosa com assinatura Ed25519 e rollback.
 
 ## Builds
 
@@ -30,9 +30,9 @@ BillieJeanPad-Update.exe
 
 ## Instalação
 
-Ao abrir Share ou Keep, o aplicativo copia-se para `%LOCALAPPDATA%\BillieJeanPad\billiejeanpad.exe`, registra inicialização automática e inicia em segundo plano sem abrir janela. Ele tenta uma Scheduled Task e usa `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` quando a política do Windows bloquear tarefas.
+Ao abrir Share ou Keep, o aplicativo copia-se para `%LOCALAPPDATA%\BillieJeanPad\BJPAgent.exe`, registra inicialização automática e inicia em segundo plano sem abrir janela. O processo aparece como `BJPAgent.exe` no Gerenciador de Tarefas. Ele tenta uma Scheduled Task e usa `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` quando a política do Windows bloquear tarefas.
 
-A versão 0.3.0 migra a chave incorporada no bootstrap para `%LOCALAPPDATA%\BillieJeanPad\state.dat`. O arquivo inteiro é criptografado pelo DPAPI no escopo do usuário do Windows. Ele guarda a chave, o modo automático e os agendamentos.
+A versão 0.3 migra a chave incorporada no bootstrap para `%LOCALAPPDATA%\BillieJeanPad\state.dat`. O arquivo inteiro é criptografado pelo DPAPI no escopo do usuário do Windows. Ele guarda a chave, o modo automático e os agendamentos.
 
 `Ctrl + Shift + F12` interrompe o som e encerra o processo. A remoção permanente fica somente na aba Máquinas da PWA, com confirmação.
 
@@ -86,7 +86,7 @@ O cliente possui somente a chave pública de lançamento. A chave privada fica e
 
 Quando existe uma versão mais nova, o cliente baixa `BillieJeanPad-Update.exe`, valida URL, tamanho, hash e assinatura, guarda a versão anterior, substitui o executável e inicia a nova. A nova versão grava `healthy.version` após 5 segundos. Se isso não acontecer em 30 segundos, o helper restaura e inicia automaticamente a versão anterior. Uma versão que falhou não é tentada novamente por 24 horas.
 
-A primeira migração para 0.3.0 é manual. Depois que 0.3.0 cria o `state.dat`, os releases seguintes podem usar o payload genérico sem conhecer a chave do grupo.
+A primeira migração para a linha 0.3 é manual. Depois que ela cria o `state.dat`, os releases seguintes podem usar o payload genérico sem conhecer a chave do grupo.
 
 ## Publicar uma atualização
 
