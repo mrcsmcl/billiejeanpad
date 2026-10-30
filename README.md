@@ -1,4 +1,4 @@
-# Billie Jean Pad 0.3.2
+# Billie Jean Pad 0.3.3
 
 Soundboard colaborativo para Windows controlado por uma PWA no celular. A linha 0.3 adiciona agenda persistente, configuração local protegida e atualização automática silenciosa com assinatura Ed25519 e rollback.
 
@@ -84,7 +84,7 @@ O cliente instalado consulta silenciosamente `docs/update.json` após o início 
 
 O cliente possui somente a chave pública de lançamento. A chave privada fica em `release-key.local.json`, está no `.gitignore` e nunca deve ser enviada ao GitHub.
 
-Quando existe uma versão mais nova, o cliente baixa `BillieJeanPad-Update.exe`, valida URL, tamanho, hash e assinatura, guarda a versão anterior, substitui o executável e inicia a nova. A nova versão grava `healthy.version` após 5 segundos. Se isso não acontecer em 30 segundos, o helper restaura e inicia automaticamente a versão anterior. Uma versão que falhou não é tentada novamente por 24 horas.
+Quando existe uma versão mais nova, o cliente baixa `BillieJeanPad-Update.exe`, valida URL, tamanho, hash e assinatura, guarda a versão anterior e inicia o próprio payload em modo helper nativo. O helper espera o processo antigo fechar, substitui o executável e acompanha a inicialização da nova versão sem usar PowerShell, `cmd` ou arquivo de script. A nova versão grava `healthy.version` após 5 segundos. Se isso não acontecer em 30 segundos, o helper restaura e inicia automaticamente a versão anterior. Uma versão que falhou não é tentada novamente por 24 horas.
 
 A primeira migração para a linha 0.3 é manual. Depois que ela cria o `state.dat`, os releases seguintes podem usar o payload genérico sem conhecer a chave do grupo.
 
@@ -96,7 +96,7 @@ Atualize `Version` em `config.go` e execute:
 powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1
 ```
 
-O script recompila tudo, assina `docs/update.json` e informa a tag esperada. Faça upload de `dist/BillieJeanPad-Update.exe` num GitHub Release com a tag correspondente, por exemplo `v0.3.2`. Só depois publique o novo `docs/update.json`.
+O script recompila tudo, assina `docs/update.json` e informa a tag esperada. Faça upload de `dist/BillieJeanPad-Update.exe` num GitHub Release com a tag correspondente, por exemplo `v0.3.3`. Só depois publique o novo `docs/update.json`.
 
 Se o GitHub CLI estiver instalado e autenticado:
 

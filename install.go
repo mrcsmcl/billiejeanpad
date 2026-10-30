@@ -136,6 +136,12 @@ func install() (installed bool, err error) {
 		_ = removeRunFallback()
 	}
 
+	if runningLegacy || DeleteLauncher == "true" {
+		if err := requestFileDelete(selfPath); err != nil {
+			logf("launcher cleanup request failed: %v", err)
+		}
+	}
+
 	if taskRegistered {
 		runCmd := exec.Command("schtasks", "/run", "/tn", AppName)
 		runCmd.SysProcAttr = hiddenProcessAttributes()
@@ -147,11 +153,6 @@ func install() (installed bool, err error) {
 		}
 	} else if err := startInstalledCopy(); err != nil {
 		return false, fmt.Errorf("start installed copy: %w", err)
-	}
-	if runningLegacy {
-		if err := scheduleFileDelete(selfPath); err != nil {
-			logf("legacy process cleanup failed: %v", err)
-		}
 	}
 
 	return true, nil
@@ -193,9 +194,8 @@ func startInstalledCopy() error {
 	return cmd.Start()
 }
 
-// uninstall removes startup registration and asks a hidden PowerShell
-// helper to stop remaining instances and retry deletion of the install
-// directory. No visible cmd window or temporary batch file is used.
+// uninstall removes startup registration and starts a native cleanup copy
+// outside the install directory. No command shell or script is used.
 func uninstall() {
 	stopAudio()
 
@@ -207,11 +207,8 @@ func uninstall() {
 	if err := removeRunFallback(); err != nil {
 		logf("HKCU Run cleanup (continuing): %v", err)
 	}
-
-	dir := quotePowerShellLiteral(installDir())
-	script := fmt.Sprintf(`$target=%s; Start-Sleep -Milliseconds 350; Get-Process -Name 'BJPAgent','billiejeanpad' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; for ($i=0; $i -lt 20; $i++) { Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $target)) { break }; Start-Sleep -Milliseconds 350 }`, dir)
-	if err := startHiddenPowerShell(script); err != nil {
-		logf("uninstall cleanup helper failed: %v", err)
+	if err := startCleanupHelper(uint32(os.Getpid()), installDir()); err != nil {
+		logf("native cleanup helper failed: %v", err)
 	}
 	os.Exit(0)
 }
@@ -245,49 +242,6 @@ func acquireLock() bool {
 		return false
 	}
 	return true
-}
-
-func scheduleLauncherDelete() error {
-	selfPath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	isInstalled, _ := sameFile(selfPath, installExePath())
-	if isInstalled {
-		return nil
-	}
-
-	return scheduleFileDelete(selfPath)
-}
-
-func scheduleFileDelete(targetPath string) error {
-	target := quotePowerShellLiteral(targetPath)
-	script := fmt.Sprintf(`$target=%s; Wait-Process -Id %d -ErrorAction SilentlyContinue; for ($i=0; $i -lt 20; $i++) { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue; if (-not (Test-Path -LiteralPath $target)) { break }; Start-Sleep -Milliseconds 350 }`, target, os.Getpid())
-	return startHiddenPowerShell(script)
-}
-
-func hiddenProcessAttributes() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: createNoWindow,
-	}
-}
-
-func quotePowerShellLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
-func startHiddenPowerShell(script string) error {
-	cmd := exec.Command(
-		"powershell.exe",
-		"-NoLogo",
-		"-NoProfile",
-		"-NonInteractive",
-		"-WindowStyle", "Hidden",
-		"-Command", script,
-	)
-	cmd.SysProcAttr = hiddenProcessAttributes()
-	return cmd.Start()
 }
 
 // --- helpers ---

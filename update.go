@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -184,22 +185,15 @@ func downloadAndVerifyUpdate(ctx context.Context, item updateManifest, destinati
 }
 
 func applyUpdate(pending, newVersion string) error {
-	exe := installExePath()
-	backup := filepath.Join(installDir(), "bjp-agent.previous.exe")
-	healthy := filepath.Join(installDir(), "healthy.version")
-	failed := filepath.Join(installDir(), "update.failed")
-	script := fmt.Sprintf(
-		`$exe=%s; $new=%s; $backup=%s; $healthy=%s; $failed=%s; Wait-Process -Id %d -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $healthy -Force -ErrorAction SilentlyContinue; Copy-Item -LiteralPath $exe -Destination $backup -Force; Move-Item -LiteralPath $new -Destination $exe -Force; $process=Start-Process -FilePath $exe -PassThru; $ok=$false; for ($i=0; $i -lt 60; $i++) { Start-Sleep -Milliseconds 500; if ((Test-Path -LiteralPath $healthy) -and ((Get-Content -LiteralPath $healthy -Raw -ErrorAction SilentlyContinue).Trim() -eq %s)) { $ok=$true; break } }; if ($ok) { Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $failed -Force -ErrorAction SilentlyContinue; exit }; Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; Copy-Item -LiteralPath $backup -Destination $exe -Force; Set-Content -LiteralPath $failed -Value (%s+'|'+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -NoNewline; Start-Process -FilePath $exe`,
-		quotePowerShellLiteral(exe),
-		quotePowerShellLiteral(pending),
-		quotePowerShellLiteral(backup),
-		quotePowerShellLiteral(healthy),
-		quotePowerShellLiteral(failed),
-		os.Getpid(),
-		quotePowerShellLiteral(newVersion),
-		quotePowerShellLiteral(newVersion),
+	cmd := exec.Command(
+		pending,
+		"--internal-apply-update",
+		"--parent-pid", strconv.Itoa(os.Getpid()),
+		"--target-exe", installExePath(),
+		"--new-version", newVersion,
 	)
-	if err := startHiddenPowerShell(script); err != nil {
+	cmd.SysProcAttr = hiddenProcessAttributes()
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 	os.Exit(0)

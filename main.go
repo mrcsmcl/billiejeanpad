@@ -20,7 +20,22 @@ var (
 func main() {
 	versionFlag := flag.Bool("version", false,
 		"print version and exit")
+	internalApply := flag.Bool("internal-apply-update", false, "internal update helper")
+	internalCleanup := flag.Bool("internal-cleanup", false, "internal cleanup helper")
+	parentPID := flag.Uint("parent-pid", 0, "internal parent process id")
+	targetExe := flag.String("target-exe", "", "internal update target")
+	targetDir := flag.String("target-dir", "", "internal cleanup target")
+	newVersion := flag.String("new-version", "", "internal update version")
 	flag.Parse()
+
+	if *internalApply {
+		_ = runUpdateHelper(uint32(*parentPID), *targetExe, *newVersion)
+		return
+	}
+	if *internalCleanup {
+		_ = runCleanupHelper(uint32(*parentPID), *targetDir)
+		return
+	}
 
 	if *versionFlag {
 		os.Stdout.WriteString("billie-jean-pad " + Version + "\n")
@@ -57,11 +72,6 @@ func main() {
 	}
 	if didInstall {
 		logf("self-install complete; original process exiting")
-		if DeleteLauncher == "true" {
-			if err := scheduleLauncherDelete(); err != nil {
-				logf("share launcher cleanup failed: %v", err)
-			}
-		}
 		return
 	}
 
@@ -77,6 +87,10 @@ func main() {
 	scheduler = NewScheduler(stateSnapshot().Schedules)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Native cleanup replaces the previous command-shell helpers.
+	go cleanupRequestedFile(ctx)
+	go cleanupStaleUpdateFiles(ctx)
 
 	// Hotkey — must own an OS thread for the Win32 message pump.
 	go hotkeyLoop(onHotkey)
