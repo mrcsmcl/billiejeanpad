@@ -1,0 +1,16 @@
+# Private group credentials
+/group.local.json
+
+# Built binaries
+/*.exe
+/*.exe~
+/dist/
+
+# Licensed audio copied from the source pack
+/sounds/**/*.wav
+
+# Local tooling
+/.playwright-cli/
+
+# Runtime/debug artifacts
+*.log
